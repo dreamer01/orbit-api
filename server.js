@@ -5,19 +5,13 @@ const cors = require("cors");
 const jwt = require("express-jwt");
 const jwtDecode = require("jwt-decode");
 const mongoose = require("mongoose");
-const epsagon = require("epsagon-frameworks");
+const marker = require("./utils/marker");
 
 const dashboardData = require("./data/dashboard");
 const User = require("./data/User");
 const InventoryItem = require("./data/InventoryItem");
 
-const { createToken, hashPassword, verifyPassword } = require("./util");
-
-epsagon.init({
-  token: process.env.EPSAGON_TOKEN,
-  appName: "orbit-api",
-  metadataOnly: false,
-});
+const { createToken, hashPassword, verifyPassword } = require("./utils/auth");
 
 const port = process.env.PORT || 3000;
 const app = express();
@@ -25,6 +19,7 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
+app.use(marker.intercept);
 
 app.get("/", (req, res) => res.json({ message: "Orbit APIs" }));
 
@@ -130,6 +125,7 @@ app.post("/api/signup", async (req, res) => {
 const attachUser = (req, res, next) => {
   const token = req.headers.authorization;
   if (!token) {
+    marker.error({ message: "No Token" }, { level: "AttachUser Middleware" });
     return res.status(401).json({ message: "Authentication invalid" });
   }
   const decodedToken = jwtDecode(token.slice(7));
@@ -139,6 +135,7 @@ const attachUser = (req, res, next) => {
       message: "There was a problem authorizing the request",
     });
   } else {
+    marker.debug("User added to request", { level: "AttachUser Middleware" });
     req.user = decodedToken;
     next();
   }
@@ -313,3 +310,18 @@ async function connect() {
 }
 
 connect();
+
+// autocannon -c 100 -d 5 -p 10 http://localhost3000
+
+// ┌─────────┬──────┬──────┬─────────┬─────────┬──────────┬───────────┬─────────┐
+// │ Stat    │ 2.5% │ 50%  │ 97.5%   │ 99%     │ Avg      │ Stdev     │ Max     │
+// ├─────────┼──────┼──────┼─────────┼─────────┼──────────┼───────────┼─────────┤
+// │ Latency │ 0 ms │ 0 ms │ 2316 ms │ 2576 ms │ 131.7 ms │ 492.49 ms │ 2802 ms │
+// └─────────┴──────┴──────┴─────────┴─────────┴──────────┴───────────┴─────────┘
+// ┌───────────┬─────┬──────┬────────┬────────┬─────────┬─────────┬────────┐
+// │ Stat      │ 1%  │ 2.5% │ 50%    │ 97.5%  │ Avg     │ Stdev   │ Min    │
+// ├───────────┼─────┼──────┼────────┼────────┼─────────┼─────────┼────────┤
+// │ Req/Sec   │ 0   │ 0    │ 438    │ 600    │ 324     │ 270.44  │ 438    │
+// ├───────────┼─────┼──────┼────────┼────────┼─────────┼─────────┼────────┤
+// │ Bytes/Sec │ 0 B │ 0 B  │ 117 kB │ 161 kB │ 86.8 kB │ 72.5 kB │ 117 kB │
+// └───────────┴─────┴──────┴────────┴────────┴─────────┴─────────┴────────┘
